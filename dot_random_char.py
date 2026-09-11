@@ -6,9 +6,9 @@ data file needed). The library is intentionally small — pictureable
 single characters grouped by category, not a full HSK list.
 
 Usage:
-    python3 dot_random_char.py --device-id B43A455B9660 --task-key FSb_DDFRcI38
+    python3 dot_random_char.py --device-id <YOUR_DEVICE_ID> --task-key <YOUR_CHAR_TASK_KEY>
 """
-import argparse, base64, json, random, sys, urllib.request, urllib.error
+import argparse, base64, json, os, random, sys, urllib.request, urllib.error
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
 
@@ -68,8 +68,10 @@ def push(device_id, task_key, api_key, png_bytes):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--device-id", required=True, help="Dot device ID (12-char hex)")
-    ap.add_argument("--task-key", required=True, help="Block taskKey from /loop/list (IMAGE_API block)")
+    ap.add_argument("--device-id", default=os.environ.get("DOT_DEVICE_ID"),
+                    help="Dot device ID (12-char hex). Falls back to env DOT_DEVICE_ID.")
+    ap.add_argument("--task-key", default=os.environ.get("DOT_TASK_KEY"),
+                    help="Block taskKey from /loop/list (IMAGE_API block). Falls back to env DOT_TASK_KEY.")
     ap.add_argument("--env-file", default=str(DEFAULT_ENV_FILE), help="Path to .env containing DOT_API_KEY")
     ap.add_argument("--font", default=DEFAULT_FONT_PATH, help="Path to TTF/TTC font")
     args = ap.parse_args()

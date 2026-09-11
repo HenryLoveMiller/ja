@@ -23,16 +23,16 @@ same URL.
 Usage:
     # Local file
     python3 cron_push_word.py /path/to/words.jsonl --stage 2 --unit 11 \\
-        --device-id B43A455B9660 --task-key 8xZ0upAS-gDv
+        --device-id <YOUR_DEVICE_ID> --task-key <YOUR_TASK_KEY>
 
     # Remote (GitHub raw, shared between hosts)
     python3 cron_push_word.py \\
         --from-url https://raw.githubusercontent.com/HenryLoveMiller/dot-content/main/words.jsonl \\
         --state-dir /home/<user>/apps/dot_random_word \\
         --stage 2 --unit 11 \\
-        --device-id 48F6EE576924 --task-key GfWF18gqDkEt
+        --device-id <YOUR_OTHER_DEVICE_ID> --task-key <YOUR_OTHER_TASK_KEY>
 """
-import argparse, base64, json, random, sys, urllib.request, urllib.error
+import argparse, base64, json, os, random, sys, urllib.request, urllib.error
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
 
@@ -187,8 +187,12 @@ def main():
     ap.add_argument("--unit", type=int, default=None, help="Single unit filter")
     ap.add_argument("--unit-start", type=int, default=None, help="Unit range start (inclusive)")
     ap.add_argument("--unit-end", type=int, default=None, help="Unit range end (inclusive)")
-    ap.add_argument("--device-id", required=True, help="Dot device ID (12-char hex)")
-    ap.add_argument("--task-key", required=True, help="Block taskKey from /loop/list (IMAGE_API block)")
+    # device-id / task-key can come from env (DOT_DEVICE_ID / DOT_TASK_KEY)
+    # to keep crontab entries stable when migrating from the old hardcoded script.
+    ap.add_argument("--device-id", default=os.environ.get("DOT_DEVICE_ID"),
+                    help="Dot device ID (12-char hex). Falls back to env DOT_DEVICE_ID.")
+    ap.add_argument("--task-key", default=os.environ.get("DOT_TASK_KEY"),
+                    help="Block taskKey from /loop/list (IMAGE_API block). Falls back to env DOT_TASK_KEY.")
     ap.add_argument("--env-file", default=str(DEFAULT_ENV_FILE), help="Path to .env containing DOT_API_KEY")
     ap.add_argument("--font", default=DEFAULT_FONT_PATH, help="Path to TTF font")
     ap.add_argument("--state-dir", default=None,
