@@ -6,12 +6,18 @@ Data source: a JSONL word file. Loaded from either a local path or a URL
 multiple hosts (e.g. lxf-host, yongfu) share the same canonical word list.
 
 Word file format: JSONL, one entry per line:
-    {"s":2,"u":1,"w":"apple"}
-    {"s":2,"u":2,"w":"teddy bear"}
+    {"c":"默认","s":2,"u":1,"w":"apple"}
+    {"c":"默认","s":2,"u":2,"w":"teddy bear"}
+    {"c":"厚海英语预备级（上）","s":2,"u":1,"w":"ball"}
+
+`c` = curriculum name (optional; default "默认" if absent, for back-compat).
+`u` = unit within that curriculum. Unit numbers are NOT unique across
+curricula — use --curriculum to disambiguate.
 
 Filtering:
-    --stage N         only pick words from stage N (default: 2)
-    --unit  N         only pick words from unit N (default: all units in stage)
+    --curriculum NAME    only words from curriculum NAME (default: "默认")
+    --stage N            only words from stage N (default: 2)
+    --unit  N            only words from unit N within the curriculum
     --unit-start N --unit-end M    range of units (inclusive)
 
 Anti-repeat: last N pushed words are stored in
@@ -75,8 +81,14 @@ def fetch_words(source):
         sys.exit(2)
 
 
-def load_words(text, stage=None, unit=None, unit_start=None, unit_end=None):
-    """Load JSONL text, filter by stage/unit. Returns (all_entries, filtered)."""
+def load_words(text, curriculum="默认", stage=None, unit=None,
+               unit_start=None, unit_end=None):
+    """Load JSONL text, filter by curriculum/stage/unit. Returns (all_entries, filtered).
+
+    `curriculum=None` disables curriculum filtering (returns everything).
+    Otherwise only entries whose `c` field equals `curriculum` are kept;
+    entries without a `c` field are treated as "默认" for back-compat.
+    """
     entries = []
     for lineno, raw in enumerate(text.splitlines(), 1):
         s = raw.strip()
@@ -91,10 +103,13 @@ def load_words(text, stage=None, unit=None, unit_start=None, unit_end=None):
         if not w:
             print(f"[words] WARN line {lineno}: empty word, skipped", file=sys.stderr)
             continue
-        entries.append((int(obj["s"]), int(obj["u"]), w))
+        c = obj.get("c", "默认")  # back-compat: old entries have no `c`
+        entries.append((c, int(obj["s"]), int(obj["u"]), w))
 
     def keep(t):
-        s, u, w = t
+        c, s, u, w = t
+        if curriculum is not None and c != curriculum:
+            return False
         if stage is not None and s != stage:
             return False
         if unit is not None and u != unit:
@@ -183,6 +198,8 @@ def main():
     src = ap.add_mutually_exclusive_group(required=True)
     src.add_argument("words_file", nargs="?", help="Path to JSONL word file (omit if --from-url)")
     src.add_argument("--from-url", help="Fetch JSONL from this URL (e.g. GitHub raw)")
+    ap.add_argument("--curriculum", default="默认",
+                    help="Curriculum name (default: 默认). Use --curriculum '' to disable curriculum filtering.")
     ap.add_argument("--stage", type=int, default=2, help="Stage filter (default: 2)")
     ap.add_argument("--unit", type=int, default=None, help="Single unit filter")
     ap.add_argument("--unit-start", type=int, default=None, help="Unit range start (inclusive)")
@@ -205,19 +222,23 @@ def main():
     text = fetch_words(source)
     print(f"[src] loaded from {source}")
 
+    # --curriculum '' means "no curriculum filter"
+    curriculum_filter = args.curriculum if args.curriculum != "" else None
+
     all_entries, pool = load_words(
-        text, stage=args.stage, unit=args.unit,
+        text, curriculum=curriculum_filter, stage=args.stage, unit=args.unit,
         unit_start=args.unit_start, unit_end=args.unit_end,
     )
     if not pool:
-        print(f"ERROR: no words match filter (stage={args.stage}, unit={args.unit}, "
+        print(f"ERROR: no words match filter (curriculum={curriculum_filter!r}, "
+              f"stage={args.stage}, unit={args.unit}, "
               f"range=[{args.unit_start},{args.unit_end}])", file=sys.stderr)
         print(f"  (total in file: {len(all_entries)})", file=sys.stderr)
         sys.exit(2)
 
     seen = set()
     dups = []
-    for _, _, w in pool:
+    for c, _, _, w in pool:
         k = w.lower()
         if k in seen:
             dups.append(w)
@@ -226,7 +247,9 @@ def main():
         print(f"[words] WARN: {len(dups)} duplicate(s) in pool: "
               f"{dups[:5]}{'...' if len(dups) > 5 else ''}")
 
-    filter_desc = f"stage={args.stage}"
+    filter_desc = f"curriculum={curriculum_filter!r}"
+    if args.stage is not None:
+        filter_desc += f" stage={args.stage}"
     if args.unit is not None:
         filter_desc += f" unit=U{args.unit}"
     elif args.unit_start is not None or args.unit_end is not None:
@@ -248,14 +271,14 @@ def main():
 
     history = load_history(state_path)
 
-    available = [t for t in pool if t[2] not in history]
+    available = [t for t in pool if t[3] not in history]
     if not available:
         available = pool
         history = []
         print("[pick] history covered full pool — resetting")
 
-    s, u, word = random.choice(available)
-    print(f"[pick] picked={word!r} (S{s}U{u}) excluded {len(pool)-len(available)} recent")
+    c, s, u, word = random.choice(available)
+    print(f"[pick] picked={word!r} (curriculum={c!r} S{s}U{u}) excluded {len(pool)-len(available)} recent")
 
     history.append(word)
     history = history[-HISTORY_SIZE:]
